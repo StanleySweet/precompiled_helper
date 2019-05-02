@@ -7,7 +7,11 @@ input_folders = ["source/simulation2/"]
 exclusions = ["source/third_party", "source/**/test_*"]
 include_dirs = ['source/', 'source/pch/simulation2/']
 working_dir = "/Users/lancelot/Desktop/git-0ad"
-follow_precompiled = False
+
+precompiled = 'source/pch/simulation2/precompiled.h'
+remove_precompiled = True
+
+discard_headers = []
 
 def unlist(lists):
 	from itertools import chain as unlist
@@ -54,16 +58,18 @@ class EverythingParser:
 		is_system = match.group(3) is None
 		header = "<" + match.group(5) + ">" if is_system else match.group(3)
 
-		if follow_precompiled or header != 'precompiled.h':
-			header = find_header(header, self.file)
-			ret.append(header)
+		header = find_header(header, self.file)
+		if header in discard_headers:
+			return True
+		
+		ret.append(header)
 
-			if header not in included_by:
-				included_by[header] = set()
-			included_by[header].add(self.file)
-			
-			if header not in parsed and not is_system:
-				to_parse.append(header)
+		if header not in included_by:
+			included_by[header] = set()
+		included_by[header].add(self.file)
+		
+		if header not in parsed and not is_system:
+			to_parse.append(header)
 
 		return True
 
@@ -147,6 +153,15 @@ if __name__ == "__main__":
 	#find_compilation_time('<algorithm>')
 
 	files = fetch_all_cpp_files(input_folders, exclusions)
+
+	if remove_precompiled:
+		parse_includes(precompiled)
+		while len(to_parse):
+			parse_includes(to_parse.pop())
+		discard_headers = parsed.keys()
+
+	print(discard_headers)
+
 	[parse_includes(file) for file in files]
 
 	while len(to_parse):
