@@ -3,7 +3,11 @@ import glob
 from pathlib import Path
 import re
 
-include_dirs = []
+input_folders = ["source/simulation2/"]
+exclusions = ["source/third_party", "source/**/test_*"]
+include_dirs = ['source/', 'source/pch/simulation2/']
+working_dir = "/Users/lancelot/Desktop/git-0ad"
+follow_precompiled = False
 
 def unlist(lists):
 	from itertools import chain as unlist
@@ -35,56 +39,7 @@ def find_header(header, og):
 
 to_parse = []
 parsed = {}
-
-class ContinuousParser:
-	def __init__(self, file):
-		self.parsing_includes = False
-		self.file = file
-
-	def process(self, line, ret, to_parse):
-		match = re.match(r'#include (("(.+?)")|(<(.+?)>))', line)
-
-		if re.match(r'\n', line):
-			return True
-
-		if match is None:
-			return not self.parsing_includes
-
-		if not self.parsing_includes:
-			self.parsing_includes = True
-
-		is_system = match.group(3) is None
-		header = "<" + match.group(5) + ">" if is_system else match.group(3)
-		if True or header != 'precompiled.h':
-			header = find_header(header, self.file)
-			ret.append(header)
-			if header not in parsed and not is_system:
-				to_parse.append(header)
-
-		return True
-
-class UntilCodeParser:
-	def __init__(self, file):
-		self.file = file
-
-	def process(self, line, ret, to_parse):
-		if re.match(r'[^#].*?\{.+[^\\]\n', line):
-			return False
-
-		match = re.match(r'#include (("(.+?)")|(<(.+?)>))', line)
-
-		if match is None:
-			return True
-
-		is_system = match.group(3) is None
-		header = "<" + match.group(5) + ">" if is_system else match.group(3)
-		if True or header != 'precompiled.h':
-			header = find_header(header, self.file)
-			ret.append(header)
-			if header not in parsed and not is_system:
-				to_parse.append(header)
-
-		return True
+included_by = {}
 
 class EverythingParser:
 	def __init__(self, file):
@@ -98,9 +53,15 @@ class EverythingParser:
 
 		is_system = match.group(3) is None
 		header = "<" + match.group(5) + ">" if is_system else match.group(3)
-		if True or header != 'precompiled.h':
+
+		if follow_precompiled or header != 'precompiled.h':
 			header = find_header(header, self.file)
 			ret.append(header)
+
+			if header not in included_by:
+				included_by[header] = set()
+			included_by[header].add(self.file)
+			
 			if header not in parsed and not is_system:
 				to_parse.append(header)
 
@@ -109,13 +70,15 @@ class EverythingParser:
 def parse_includes(file):
 	global parsed
 	global to_parse
+
+	if not Path(file).is_file():
+		return
+
 	ret = []
 	parsed[Path(file).as_posix()] = ret
 
 	parser = EverythingParser(file)
 
-	if not Path(file).is_file():
-		return
 	with open(file) as f:
 		line = f.readline()
 		while line:
@@ -124,10 +87,11 @@ def parse_includes(file):
 			line = f.readline()
 
 scores = {}
+cpp_include_all = {}
 
 def score_file(cpp_file):
 	met = set()
-	to_meet = [cpp_file]
+	to_meet = set([cpp_file])
 	while len(to_meet):
 		file = to_meet.pop()
 		
@@ -139,7 +103,8 @@ def score_file(cpp_file):
 			scores[file] = scores[file] + 1
 		
 		if file in parsed:
-			to_meet = to_meet + list(set(parsed[file]).difference(met))
+			to_meet = to_meet.union(set(parsed[file]).difference(met))
+	cpp_include_all[cpp_file] = list(met)
 
 compilation_times = {}
 
@@ -175,27 +140,30 @@ def find_compilation_time(file):
 	else:
 		print(f'Error compiling {file}')
 
-include_dirs = ['source/', 'source/pch/simulation2/']
-working_dir = "/Users/lancelot/Documents/github_repos/0ad"
-
 if __name__ == "__main__":
+	wd = os.getcwd()
 	os.chdir(working_dir)
 
-	find_compilation_time('<algorithm>')
-	print(compilation_times)
+	#find_compilation_time('<algorithm>')
 
-	files = fetch_all_cpp_files(["source/simulation2/components/CCmpAIManager.cpp"],["source/third_party", "source/**/test_*"])
+	files = fetch_all_cpp_files(input_folders, exclusions)
 	[parse_includes(file) for file in files]
 
 	while len(to_parse):
 		parse_includes(to_parse.pop())
 
-	[score_file(file) for file in files]
-	[find_compilation_time(file) for file in scores.keys()]
+	os.chdir(wd)
 
-	print("header;n")
-	for f in scores:
-		print(f'{f};{scores[f]}')
+	[score_file(file) for file in files]
+	#[find_compilation_time(file) for file in scores.keys()]
+
+	with open('scores.csv','w') as out:
+		out.write("header;n\n")
+		for f in scores:
+			out.write(f'{f};{scores[f]}\n')
+
+	with open('included_by.csv','w') as out:
+		[out.write(header + " : " + str(included_by[header]) + '\n') for header in included_by]
 
 	print("header;compilation_time")
 	for f in compilation_times:
