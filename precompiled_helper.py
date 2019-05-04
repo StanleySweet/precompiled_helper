@@ -4,14 +4,15 @@ from pathlib import Path
 import re
 from include_parser import IncludeParser
 
-input_folders = ["source/simulation2"]
+input_folders = ["source/maths", "source/ps", "source/soundmanager", "source/network/scripting"]
 exclusions = ["source/third_party", "source/**/test_*"]
-include_dirs = ['source/', 'source/pch/simulation2/']
-working_dir = "/Users/lancelot/Documents/github_repos/0ad"
+include_dirs = ['source/', 'source/pch/engine/']
+working_dir = "/Users/lancelot/Desktop/git-0ad"
 
-precompiled = 'source/pch/simulation2/precompiled.h'
+precompiled = 'source/pch/engine/precompiled.h'
 remove_precompiled = True
-stop_at_headers = []
+stop_at_headers = [precompiled]
+prune_solo = True
 
 def unlist(lists):
 	from itertools import chain as unlist
@@ -45,28 +46,46 @@ if __name__ == "__main__":
 
 	files = fetch_all_cpp_files(input_folders, exclusions)
 
-	if remove_precompiled:
-		IncludeParser(precompiled, include_dirs, directly_includes, included_directly_by, includes, included_by).run()
-		stop_at_headers = included_by.keys()
+	def pretend(parser):
+		parser.pretend_being('clang')
+		parser.define('MOZJS_MAJOR_VERSION 38')
+		parser.define('MOZJS_MINOR_VERSION 3')
+		parser.define('CONFIG_ENABLE_PCH 1')
+		parser.define('USING_PCH 1')
+		parser.define('SDL_VERSION_ATLEAST(a,b,c) 1')
+		return parser
 
+	if remove_precompiled:
+		parser = IncludeParser(precompiled, include_dirs, directly_includes, included_directly_by, includes, included_by)
+		pretend(parser).run()
+		stop_at_headers = stop_at_headers + list(included_by.keys())
+		print(stop_at_headers)
 		directly_includes = {}
 		included_directly_by = {}
 		includes = {}
 		included_by = {}
 
 	def run(file):
-		IncludeParser(file, include_dirs, directly_includes, included_directly_by, includes, included_by).add_stop_at(stop_at_headers).run()
+		parser = IncludeParser(file, include_dirs, directly_includes, included_directly_by, includes, included_by)
+		parser.add_stop_at(stop_at_headers)
+		pretend(parser).run()
+		print(f"Ran {file}")
 
 	[run(file) for file in files]
-
-	print(directly_includes)
-	print(included_directly_by)
-	print(includes)
-	print(included_by)
 
 	os.chdir(wd)
 
 	with open('scores.csv','w') as out:
-		out.write("header;n\n")
+		out.write("header;n;prop;leaf\n")
 		for f in included_by:
-			out.write(f'{f};{len(included_by[f])}\n')
+			if prune_solo and f in included_directly_by and len(included_directly_by[f]) ==1:
+				continue
+			out.write(f'{f};{len(included_by[f])};{len(included_by[f])/len(files)};{0 if f in directly_includes else 1}\n')
+
+	with open('direct_includes.txt','w') as out:
+		for f in directly_includes:
+			out.write(f'{f} : {directly_includes[f]}\n')
+
+	with open('direct_included_by.txt','w') as out:
+		for f in included_directly_by:
+			out.write(f'{f} : {included_directly_by[f]}\n')
