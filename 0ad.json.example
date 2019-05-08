@@ -1,0 +1,9 @@
+{
+	"working_dir": "[path to your 0AD repo]",
+	"input_folders": ["source/simulation2/"],
+	"exclusions": ["**/test_*"],
+	"include_dirs": ["source/"],
+	"precompiled": "source/pch/simulation2/precompiled.h",
+	"remove_headers_from_precompiled": true,
+	"stop_at_headers": []
+}
