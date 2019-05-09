@@ -84,8 +84,9 @@ def parse_args():
         exclusions = config["exclusions"]
         include_dirs = config["include_dirs"]
         precompiled = config["precompiled"]
-        remove_headers_from_precompiled =
-        config["remove_headers_from_precompiled"]
+        remove_headers_from_precompiled = config[
+            "remove_headers_from_precompiled"
+        ]
         stop_at_headers = config["stop_at_headers"]
 
     if precompiled:
@@ -125,15 +126,19 @@ if __name__ == "__main__":
     with open('scores.csv', 'w') as out:
         out.write("header;n;ndir;prop;explo;leaf\n")
         for f in included_by:
-            if prune_solo and f in included_directly_by and
-            len(included_directly_by[f]) == 1:
+            if (prune_solo and f in included_directly_by and
+                    len(included_directly_by[f]) == 1):
                 continue
+
+            num = (len(directly_includes[f])
+                   if f in directly_includes
+                   else 0)
+
             out.write(
                 f'{f};{len(included_by[f])}; \
                 {len(included_directly_by[f])}; \
                 {len(included_by[f])/len(files)}; \
-                {(len(directly_includes[f])  \
-                if f in directly_includes else 0)*len(included_by[f])}; \
+                {num * len(included_by[f])}; \
                 {0 if f in directly_includes else 1}\n')
 
     with open('direct_includes.txt', 'w') as out:
